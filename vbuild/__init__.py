@@ -295,7 +295,7 @@ class VBuild:
                 try:
                     self._script = [
                         mkPythonVueComponent(
-                            name, "#" + tplId, vp.script.value, fullPyComp
+                            name, "#" + tplId, vp.script.value, filename,fullPyComp
                         )
                     ]
                 except Exception as e:
@@ -322,7 +322,7 @@ class VBuild:
         l = []
         for tplId, html in self._html:
             l.append(
-                """<script type="text/x-template" id="%s">%s</script>"""
+                """<template id="%s">%s</template>"""
                 % (tplId, transHtml(html))
             )
         return "\n".join(l)
@@ -404,8 +404,19 @@ def mkClassicVueComponent(name, template, code):
         js.replace("{", "{template:'%s'," % template, 1),
     )
 
+def require(path):
+    folder=os.path.dirname(__file_component__)
+    fullpath=os.path.join(folder+"/"+path)
+    print(fullpath)
+    with open(fullpath) as f:
+        content=f.read()
+    node=VBuild(path,content)
+    print("wwwwww",node._script)
+    return node
+def alert(alerta):
+    pass
 
-def mkPythonVueComponent(name, template, code, genStdLibMethods=True):
+def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMethods=True):
     """ Transpile the component 'name', which have the template 'template',
         and the code 'code' (which should contains a valid Component class)
         to a valid Vue.component js statement.
@@ -417,12 +428,15 @@ def mkPythonVueComponent(name, template, code, genStdLibMethods=True):
     code = code.replace(
         "class Component:", "class C:"
     )  # minimize class name (todo: use py2js option for that)
+
+    globals()["__file_component__"]=__file_component__
     exec(code, globals(), locals())
     klass = locals()["C"]
 
     computeds = []
     watchs = []
     methods = []
+    components=[] # nuevo 
     lifecycles = []
     classname = klass.__name__
     props = []
@@ -472,7 +486,7 @@ def mkPythonVueComponent(name, template, code, genStdLibMethods=True):
 
     return (
         """
-var %(name)s=(function() {
+
 
     %(pyjs)s
 
@@ -482,10 +496,9 @@ var %(name)s=(function() {
         return new F();
     }
 
-    return Vue.component('%(name)s',{
+    export default{
         name: "%(name)s",
         props: %(props)s,
-        template: '%(template)s',
         data: function() {
             var props=[]
             var ll=%(props)s;
@@ -503,8 +516,8 @@ var %(name)s=(function() {
             %(watchs)s
         },
         %(lifecycles)s
-    })
-})();
+    }
+
 """
         % locals()
     )
@@ -534,6 +547,10 @@ def render(*filenames):
         ll.append(VBuild(f, content))
 
     return sum(ll)
+
+def build(path="src/"):
+    d=render(path)
+    print(d)
 
 
 if __name__ == "__main__":
