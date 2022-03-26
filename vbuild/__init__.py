@@ -272,7 +272,7 @@ class VBuild:
         # unique = name+"-"+''.join(random.choice(string.letters + string.digits) for _ in range(8))
         tplId = "tpl-" + unique
         dataId = "data-" + unique
-
+        print("UUUUUUUUUUU")
         vp = VueParser(content, filename)
         if vp.html is None:
             raise VBuildException("Component %s doesn't have a template" % filename)
@@ -288,6 +288,7 @@ class VBuild:
                 self._styles.append(("", style, filename))
             for style in vp.scopedStyles:
                 self._styles.append(("*[%s]" % dataId, style, filename))
+            print("ZZZZZZZZZZZ")
 
             # and set self._script !
             if vp.script and ("class Component:" in vp.script.value):
@@ -405,14 +406,23 @@ def mkClassicVueComponent(name, template, code):
     )
 
 def require(path):
+    import re
     folder=os.path.dirname(__file_component__)
     fullpath=os.path.join(folder+"/"+path)
-    print(fullpath)
+
     with open(fullpath) as f:
         content=f.read()
     node=VBuild(path,content)
-    print("wwwwww",node._script)
-    return node
+    print("$$$$$$$$$4",re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]))
+    #variable=re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]).groups()[0]
+    class JsModule:
+        def __repr__(self):
+            return "Login"
+    globals()["Login"]=JsModule()
+    class JsModule2:
+        def __getattr__(self,elem):
+            pass
+    return JsModule2()
 def alert(alerta):
     pass
 
@@ -428,20 +438,27 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     code = code.replace(
         "class Component:", "class C:"
     )  # minimize class name (todo: use py2js option for that)
-
+    globals()["require"]=require
     globals()["__file_component__"]=__file_component__
+    globals()["__code__"]=code
+    globals()["console"]=type("console",(),{"log":lambda *args:None})
+    with open(f"_prueba_{name}.py","w") as f:
+        f.write(code)
+    
     exec(code, globals(), locals())
     klass = locals()["C"]
 
     computeds = []
     watchs = []
     methods = []
-    components=[] # nuevo 
+    components={} # nuevo 
     lifecycles = []
     classname = klass.__name__
     props = []
+    print("bbbbbbb")
     for oname, obj in vars(klass).items():
         if callable(obj):
+            print("------ ",oname)
             if not oname.startswith("_"):
                 if oname.startswith("COMPUTED_"):
                     computeds.append(
@@ -470,10 +487,15 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                     lifecycles.append(
                         "%s: %s.prototype.%s," % (oname.lower(), classname, oname)
                     )
+                
                 else:
                     methods.append("%s: %s.prototype.%s," % (oname, classname, oname))
             elif oname == "__init__":
                 props = list(obj.__code__.co_varnames)[1:]
+        else:
+            if oname=="components":
+                components=obj
+
 
     methods = "\n".join(methods)
     computeds = "\n".join(computeds)
@@ -483,10 +505,19 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     pyjs = pscript.py2js(
         code, inline_stdlib=genStdLibMethods
     )  # https://pscript.readthedocs.io/en/latest/api.html
+    import re
+    r"""
+     re.sub(pattern,"class \g<variable>: pass","Hola.otra cosa")
+     'class Hola: pass'
 
+    """
+    pyjs=re.sub(r"(?P<variable>\w+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)\.(?P<module>\w+)",
+        r"import { \g<module> as \g<variable> } from '\g<path>'",
+        pyjs)
+    
     return (
         """
-
+//este codigo
 
     %(pyjs)s
 
@@ -499,6 +530,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     export default{
         name: "%(name)s",
         props: %(props)s,
+        components: %(components)s,
         data: function() {
             var props=[]
             var ll=%(props)s;
