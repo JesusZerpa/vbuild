@@ -257,6 +257,7 @@ class VBuild:
                 filename: which will be used to name the component, and create the namespace for the template
                 content: the string buffer which contains the sfc/vue component
         """
+    
         if not filename:
             raise VBuildException("Component %s should be named" % filename)
 
@@ -268,11 +269,11 @@ class VBuild:
 
         name = os.path.splitext(os.path.basename(filename))[0]
 
-        unique = filename[:-4].replace("/", "-").replace("\\", "-").replace(":", "-").replace(".", "-")
+        unique = filename[len(os.getcwd()):-4].replace("/", "-").replace("\\", "-").replace(":", "-").replace(".", "-")
         # unique = name+"-"+''.join(random.choice(string.letters + string.digits) for _ in range(8))
         tplId = "tpl-" + unique
         dataId = "data-" + unique
-        print("UUUUUUUUUUU")
+    
         vp = VueParser(content, filename)
         if vp.html is None:
             raise VBuildException("Component %s doesn't have a template" % filename)
@@ -288,7 +289,7 @@ class VBuild:
                 self._styles.append(("", style, filename))
             for style in vp.scopedStyles:
                 self._styles.append(("*[%s]" % dataId, style, filename))
-            print("ZZZZZZZZZZZ")
+   
 
             # and set self._script !
             if vp.script and ("class Component:" in vp.script.value):
@@ -409,16 +410,23 @@ def require(path):
     import re
     folder=os.path.dirname(__file_component__)
     fullpath=os.path.join(folder+"/"+path)
+    fullpath2=os.path.abspath(__file_component__)
 
-    with open(fullpath) as f:
+    with open(fullpath2) as f:
         content=f.read()
-    node=VBuild(path,content)
-    print("$$$$$$$$$4",re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]))
+    
+    #node=VBuild(path,content)
+    
+    
+    match=re.search(r"(?P<variable>\w+)\s*?=\s*?require\(\""+path.replace(".",r"\."),content)
     #variable=re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]).groups()[0]
     class JsModule:
         def __repr__(self):
             return "Login"
-    globals()["Login"]=JsModule()
+    if match:
+        globals()[match.groups()[0]]=JsModule()    
+    
+
     class JsModule2:
         def __getattr__(self,elem):
             pass
@@ -434,7 +442,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
         genStdLibMethods : generate own std lib method inline (with the js)
                 (if False: use pscript.get_full_std_lib() to get them)
     """
-    import pscript
+    import pscript,re
     code = code.replace(
         "class Component:", "class C:"
     )  # minimize class name (todo: use py2js option for that)
@@ -442,9 +450,30 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     globals()["__file_component__"]=__file_component__
     globals()["__code__"]=code
     globals()["console"]=type("console",(),{"log":lambda *args:None})
+    import sys
+    __file__=__file_component__
+    sys.path.append(os.path.dirname(__file_component__))
+    
+    
+    pattern=r"from\s *?(?P<package>[\w|\.]+)\s*? import (?P<module>[\w|\.]+)"
+
+    #code=re.sub(pattern,r"\g<module>=type('\g<module>',(),{})",code)
+    matches=[]
+    for match in re.finditer(pattern,code):
+        matches.append(match.groupdict())
+
+    code=re.sub(pattern,r"\g<module>=require('\g<package>.py').\g<module>",code)
+    for match in matches:
+
+        if match['package'].startswith("."):
+            _package="."+match['package'].replace('.','/')
+        else:
+            _package=match['package'].replace('.','/')
+
+        code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
+
     with open(f"_prueba_{name}.py","w") as f:
         f.write(code)
-    
     exec(code, globals(), locals())
     klass = locals()["C"]
 
@@ -455,10 +484,10 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     lifecycles = []
     classname = klass.__name__
     props = []
-    print("bbbbbbb")
+    
     for oname, obj in vars(klass).items():
         if callable(obj):
-            print("------ ",oname)
+            
             if not oname.startswith("_"):
                 if oname.startswith("COMPUTED_"):
                     computeds.append(
@@ -483,10 +512,12 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                     "BEFOREUPDATE",
                     "BEFOREDESTROY",
                     "DESTROYED",
+                    "DATA"
                 ]:
                     lifecycles.append(
                         "%s: %s.prototype.%s," % (oname.lower(), classname, oname)
                     )
+
                 
                 else:
                     methods.append("%s: %s.prototype.%s," % (oname, classname, oname))
@@ -514,6 +545,10 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     pyjs=re.sub(r"(?P<variable>\w+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)\.(?P<module>\w+)",
         r"import { \g<module> as \g<variable> } from '\g<path>'",
         pyjs)
+
+    pyjs=re.sub(r"(?P<variable>[\w|,|\s]+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)",
+        r"import { \g<variable> } from '\g<path>'",
+        pyjs)
     
     return (
         """
@@ -531,13 +566,6 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
         name: "%(name)s",
         props: %(props)s,
         components: %(components)s,
-        data: function() {
-            var props=[]
-            var ll=%(props)s;
-            for(var i in ll) props.push( this.$props[ ll[i] ] )
-            var i=construct(%(classname)s,props) // new %(classname)s(...props)
-            return JSON.parse(JSON.stringify( i ));
-        },
         computed: {
             %(computeds)s
         },
@@ -584,6 +612,12 @@ def build(path="src/"):
     d=render(path)
     print(d)
 
+def src_py2js(path):
+    import pscript
+    with open(path) as f:
+        compiled=pscript.py2js(f.read(),inline_stdlib=True)
+        print(compiled+"\nexport {"+",".join(compiled.meta['vars_defined'])+" }")
+        #print(json.dumps(compiled.meta))
 
 if __name__ == "__main__":
     print("Less installed (lesscpy)    :", hasLess)
