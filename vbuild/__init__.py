@@ -335,12 +335,27 @@ class VBuild:
         js = "\n".join(self._script)
         isPyComp = "_pyfunc_op_instantiate(" in js  # in fact : contains
         isLibInside = "var _pyfunc_op_instantiate" in js
+        import pscript
 
         if (fullPyComp is False) and isPyComp and not isLibInside:
             import pscript
             return transScript(pscript.get_full_std_lib() + "\n" + js)
         else:
-            return transScript(js)
+            _jsevent="""
+            function jsevent(listener){
+                return function(fn){
+                if (fn.name.indexOf("bound flx_")>-1){
+                    listener(fn.name.slice("bound flx_".length),fn)
+                }
+                else{
+                    listener(fn.name,fn)
+                }
+                
+                return fn
+                }
+            }
+            """
+            return transScript(_jsevent+js)
 
     @property
     def style(self):
@@ -423,14 +438,20 @@ def require(path):
     class JsModule:
         def __repr__(self):
             return "Login"
+        def __getattr__(self,elem):
+            return lambda *args,**kwargs:JsModule2
     if match:
         globals()[match.groups()[0]]=JsModule()    
     
 
     class JsModule2:
+        def __repr__(self):
+            return "Login2"
         def __getattr__(self,elem):
-            pass
+            return lambda *args,**kwargs:JsModule2
+        
     return JsModule2()
+
 def alert(alerta):
     pass
 
@@ -443,10 +464,19 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 (if False: use pscript.get_full_std_lib() to get them)
     """
     import pscript,re
+    from dotenv import load_dotenv
+    load_dotenv()
+
     code = code.replace(
         "class Component:", "class C:"
     )  # minimize class name (todo: use py2js option for that)
+
     globals()["require"]=require
+    class Window:
+        def __getattr__(self,key):
+            return key
+    globals()["window"]=Window()
+    globals()["jsevent"]=lambda *args,**kwargs:lambda *args,**kwargs:None
     globals()["__file_component__"]=__file_component__
     globals()["__code__"]=code
     globals()["console"]=type("console",(),{"log":lambda *args:None})
@@ -474,6 +504,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
 
     with open(f"_prueba_{name}.py","w") as f:
         f.write(code)
+
     exec(code, globals(), locals())
     klass = locals()["C"]
 
@@ -542,13 +573,28 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
      'class Hola: pass'
 
     """
+    
     pyjs=re.sub(r"(?P<variable>\w+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)\.(?P<module>\w+)",
         r"import { \g<module> as \g<variable> } from '\g<path>'",
         pyjs)
-
+    
+   
+    
+    
     pyjs=re.sub(r"(?P<variable>[\w|,|\s]+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)",
         r"import { \g<variable> } from '\g<path>'",
         pyjs)
+    param=r"[\w|\d|\.|\'|,|\[|\]|\{|\}|:|\"|/|+|_|\s]+"
+    
+    pyjs=re.sub(rf"(?P<variable>[\w|,|\.|\s]+)\s+?=\s+?new \(require\(\"(?P<path>[\w|\.|\/]+)\"\).(?P<module>\w+)\)\((?P<params>{param})\)",
+        r"\nimport { \g<module> } from '\g<path>';\g<variable> = \g<module>(\g<params>)",
+        pyjs)
+    pyjs=re.sub(rf"os.environ\[[\"|'](?P<variable>\w+)[\"|']\]",
+        r"import.meta.env.\g<variable>",
+        pyjs)
+    with open(f"_prueba_{name}.js","w") as f:
+        f.write(pyjs)
+    
     
     return (
         """
