@@ -420,6 +420,15 @@ def mkClassicVueComponent(name, template, code):
         name,
         js.replace("{", "{template:'%s'," % template, 1),
     )
+class JsModule:
+    def __init__(self,name):
+        self.__name__=name
+    def __repr__(self):
+        return self.__name__
+    def __getattr__(self,elem):
+        return JsModule(elem)
+    def __call__(self,*args,**kwargs):
+        return JsModule("JsModule")
 
 def require(path):
     import re
@@ -435,22 +444,14 @@ def require(path):
     
     match=re.search(r"(?P<variable>\w+)\s*?=\s*?require\(\""+path.replace(".",r"\."),content)
     #variable=re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]).groups()[0]
-    class JsModule:
-        def __repr__(self):
-            return "Login"
-        def __getattr__(self,elem):
-            return lambda *args,**kwargs:JsModule2
+    
     if match:
-        globals()[match.groups()[0]]=JsModule()    
+        globals()[match.groups()[0]]=JsModule(match.groups()[0])    
     
 
-    class JsModule2:
-        def __repr__(self):
-            return "Login2"
-        def __getattr__(self,elem):
-            return lambda *args,**kwargs:JsModule2
+
         
-    return JsModule2()
+    return JsModule("JsModule")
 
 def alert(alerta):
     pass
@@ -476,6 +477,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
         def __getattr__(self,key):
             return key
     globals()["window"]=Window()
+    globals()["document"]=JsModule("document")
     globals()["jsevent"]=lambda *args,**kwargs:lambda *args,**kwargs:None
     globals()["__file_component__"]=__file_component__
     globals()["__code__"]=code
@@ -567,33 +569,10 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     pyjs = pscript.py2js(
         code, inline_stdlib=genStdLibMethods
     )  # https://pscript.readthedocs.io/en/latest/api.html
-    import re
-    r"""
-     re.sub(pattern,"class \g<variable>: pass","Hola.otra cosa")
-     'class Hola: pass'
+    
+    
 
-    """
     
-    pyjs=re.sub(r"(?P<variable>\w+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)\.(?P<module>\w+)",
-        r"import { \g<module> as \g<variable> } from '\g<path>'",
-        pyjs)
-    
-   
-    
-    
-    pyjs=re.sub(r"(?P<variable>[\w|,|\s]+)\s+?=\s+?require\(\"(?P<path>[\w|\.|\/]+)\"\)",
-        r"import { \g<variable> } from '\g<path>'",
-        pyjs)
-    param=r"[\w|\d|\.|\'|,|\[|\]|\{|\}|:|\"|/|+|_|\s]+"
-    
-    pyjs=re.sub(rf"(?P<variable>[\w|,|\.|\s]+)\s+?=\s+?new \(require\(\"(?P<path>[\w|\.|\/]+)\"\).(?P<module>\w+)\)\((?P<params>{param})\)",
-        r"\nimport { \g<module> } from '\g<path>';\g<variable> = \g<module>(\g<params>)",
-        pyjs)
-    pyjs=re.sub(rf"os.environ\[[\"|'](?P<variable>\w+)[\"|']\]",
-        r"import.meta.env.\g<variable>",
-        pyjs)
-    with open(f"_prueba_{name}.js","w") as f:
-        f.write(pyjs)
     
     
     return (
