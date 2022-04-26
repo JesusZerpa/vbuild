@@ -341,21 +341,8 @@ class VBuild:
             import pscript
             return transScript(pscript.get_full_std_lib() + "\n" + js)
         else:
-            _jsevent="""
-            function jsevent(listener){
-                return function(fn){
-                if (fn.name.indexOf("bound flx_")>-1){
-                    listener(fn.name.slice("bound flx_".length),fn)
-                }
-                else{
-                    listener(fn.name,fn)
-                }
-                
-                return fn
-                }
-            }
-            """
-            return transScript(_jsevent+js)
+            
+            return transScript(js)
 
     @property
     def style(self):
@@ -497,15 +484,19 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     code=re.sub(pattern,r"\g<module>=require('\g<package>.py').\g<module>",code)
     for match in matches:
 
-        if match['package'].startswith("."):
+        if match['package'].startswith(".") and not match['package'].startswith(".."):
+            path=os.path.dirname(__file_component__)+match['package'].replace('.','/')
             _package="."+match['package'].replace('.','/')
+        elif match['package'].startswith("..") :
+            _package="."+match['package'].replace('.','/').replace("//","/../")
         else:
             _package=match['package'].replace('.','/')
 
-        code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
+      
+        if os.path.isdir(path):
+            _package+="/__init__"
 
-    with open(f"_prueba_{name}.py","w") as f:
-        f.write(code)
+        code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
 
     exec(code, globals(), locals())
     klass = locals()["C"]
@@ -545,7 +536,8 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                     "BEFOREUPDATE",
                     "BEFOREDESTROY",
                     "DESTROYED",
-                    "DATA"
+                    "DATA",
+                    "SETUP",
                 ]:
                     lifecycles.append(
                         "%s: %s.prototype.%s," % (oname.lower(), classname, oname)
@@ -567,7 +559,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     lifecycles = "\n".join(lifecycles)
 
     pyjs = pscript.py2js(
-        code, inline_stdlib=genStdLibMethods
+        code, inline_stdlib=genStdLibMethods,filename=__file_component__
     )  # https://pscript.readthedocs.io/en/latest/api.html
     
     
@@ -640,9 +632,12 @@ def build(path="src/"):
 def src_py2js(path):
     import pscript
     with open(path) as f:
-        compiled=pscript.py2js(f.read(),inline_stdlib=True)
-        print(compiled+"\nexport {"+",".join(compiled.meta['vars_defined'])+" }")
-        #print(json.dumps(compiled.meta))
+        compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path)
+        with open(f"prueba_{path.split('/')[-1].replace('.','_')}.js","w") as f:
+            f.write(compiled)
+        
+
+        print(compiled)
 
 if __name__ == "__main__":
     print("Less installed (lesscpy)    :", hasLess)
