@@ -475,14 +475,28 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     
     
     pattern=r"from\s *?(?P<package>[\w|\.]+)\s*? import (?P<module>[\w|\.]+)"
-
+    pattern2=r"(?P<variable>\w+)\s*=\s*require\('(?P<package>[\w|\@|\/|-]+)"
     #code=re.sub(pattern,r"\g<module>=type('\g<module>',(),{})",code)
     matches=[]
+    _vars={}
     for match in re.finditer(pattern,code):
         matches.append(match.groupdict())
+        _vars[match["module"]]=JsModule(match["module"])
+
+    for match in re.finditer(pattern2,code):
+  
+        if match["variable"] not in _vars:
+            _vars[match["variable"]]=JsModule(match["variable"])
+    globals().update(_vars)
+    
+    
+
 
     code=re.sub(pattern,r"\g<module>=require('\g<package>.py').\g<module>",code)
     for match in matches:
+        
+        path=None
+
 
         if match['package'].startswith(".") and not match['package'].startswith(".."):
             path=os.path.dirname(__file_component__)+match['package'].replace('.','/')
@@ -491,13 +505,17 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
             _package="."+match['package'].replace('.','/').replace("//","/../")
         else:
             _package=match['package'].replace('.','/')
+        if not path:
 
-      
-        if os.path.isdir(path):
-            _package+="/__init__"
+            code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}')",code)
 
-        code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
+        else:
+            if os.path.isdir(path):
+                _package+="/__init__"
 
+            code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
+    
+    
     exec(code, globals(), locals())
     klass = locals()["C"]
 
@@ -530,6 +548,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                             "name='var_to_watch' is not specified in %s" % oname
                         )
                 elif oname in [
+                    "BEFOREMOUNT",
                     "MOUNTED",
                     "CREATED",
                     "UPDATED",
@@ -539,9 +558,18 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                     "DATA",
                     "SETUP",
                 ]:
-                    lifecycles.append(
-                        "%s: %s.prototype.%s," % (oname.lower(), classname, oname)
-                    )
+                    if oname=="BEFOREMOUNT":
+                        lifecycles.append(
+                            "beforeMount: %s.prototype.%s," % ( classname, oname)
+                        )
+                    elif oname=="BEFOREUPDATE":
+                        lifecycles.append(
+                            "beforeUpdate: %s.prototype.%s," % ( classname, oname)
+                        )
+                    else:
+                        lifecycles.append(
+                            "%s: %s.prototype.%s," % (oname.lower(), classname, oname)
+                        )
 
                 
                 else:
@@ -633,8 +661,7 @@ def src_py2js(path):
     import pscript
     with open(path) as f:
         compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path)
-        with open(f"prueba_{path.split('/')[-1].replace('.','_')}.js","w") as f:
-            f.write(compiled)
+        
         
 
         print(compiled)
