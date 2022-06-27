@@ -268,8 +268,12 @@ class VBuild:
                 filename = filename.encode("utf8")  # ascii conversions (regex)
 
         name = os.path.splitext(os.path.basename(filename))[0]
-
-        unique = filename[len(os.getcwd()):-4].replace("/", "-").replace("\\", "-").replace(":", "-").replace(".", "-")
+        if filename.startswith(os.getcwd()):
+            unique = filename[len(os.getcwd()):-4].replace("/", "-").replace("\\", "-").replace(":", "-").replace(".", "-")
+        else:
+            part=filename.split("/")
+            i=part.index("src")
+            unique = "-".join(part[i:])[:-4]
         # unique = name+"-"+''.join(random.choice(string.letters + string.digits) for _ in range(8))
         tplId = "tpl-" + unique
         dataId = "data-" + unique
@@ -278,8 +282,10 @@ class VBuild:
         if vp.html is None:
             raise VBuildException("Component %s doesn't have a template" % filename)
         else:
+            
+            dataId=""
             html = re.sub(r"^<([\w-]+)", r"<\1 %s" % dataId, vp.html.value)
-
+         
             self.tags = [name]
             # self.html="""<script type="text/x-template" id="%s">%s</script>""" % (tplId, transHtml(html) )
             self._html = [(tplId, html)]
@@ -579,6 +585,8 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
         else:
             if oname=="components":
                 components=obj
+            if oname=="props":
+                props=obj
 
 
     methods = "\n".join(methods)
