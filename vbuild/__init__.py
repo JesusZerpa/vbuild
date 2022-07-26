@@ -559,7 +559,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                             "name='var_to_watch' is not specified in %s" % oname
                         )
                 elif oname in [
-                    "BEFOREROUTEUPDATE"
+                    "BEFOREROUTEUPDATE",
                     "BEFOREMOUNT",
                     "MOUNTED",
                     "CREATED",
