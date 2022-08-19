@@ -154,6 +154,7 @@ class VueParser(HTMLParser):
         self._scriptLang = None
         self._styleLang = None
         self.rootTag = None
+        self.script_setup=None
         self.html, self.script, self.styles, self.scopedStyles = None, None, [], []
         self.feed(buf.strip("\n\r\t "))
 
@@ -165,6 +166,7 @@ class VueParser(HTMLParser):
             self._level += 1
 
             attributes = dict([(k.lower(), v and v.lower()) for k, v in attrs])
+            self.attributes=attributes
             if tag == "style" and attributes.get("lang", None):
                 self._styleLang = attributes["lang"]
             if tag == "script" and attributes.get("lang", None):
@@ -193,7 +195,10 @@ class VueParser(HTMLParser):
     def handle_data(self, data):
         if self._level == 1:
             if self._tag == "script":
-                self.script = Content(data, self._scriptLang)
+                if "setup" in self.attributes:
+                    self.script_setup = Content(data, self._scriptLang)
+                else:
+                    self.script = Content(data, self._scriptLang)
             if self._tag == "style":
                 if "scoped" in self.get_starttag_text().lower():
                     self.scopedStyles.append(Content(data, self._styleLang))
@@ -295,7 +300,41 @@ class VBuild:
                 self._styles.append(("", style, filename))
             for style in vp.scopedStyles:
                 self._styles.append(("*[%s]" % dataId, style, filename))
-   
+            # and set self._script !
+            if vp.script_setup and ("class Component:" in vp.script_setup.value):
+                ######################################################### python
+                try:
+                    self._script_setup = [
+                        mkPythonVueComponent2(
+                            name, "#" + tplId, vp.script_setup.value, filename,fullPyComp
+                        )
+                    ]
+                except Exception as e:
+                    raise VBuildException(
+                        "Python Component '%s' is broken : %s"
+                        % (filename, traceback.format_exc())
+                    )
+            else:
+                ######################################################### js
+                try:
+                    if vp.script_setup.type=="python":
+                        self._script_setup = [
+                            mkClassicVueComponent2(
+                                name, "#" + tplId, vp.script_setup and vp.script_setup.value
+                            )
+                        ]
+                    else:
+                        self._script_setup = [
+                            vp.script_setup.value
+                        ]
+
+                except Exception as e:
+                    with open("NODE.txt","w") as f:
+                        f.write(str(vp.script_setup.value))
+                    print("qqqqqqqq ",e)
+                    raise VBuildException(
+                        "JS Component %s contains a bad script" % filename
+                    )
 
             # and set self._script !
             if vp.script and ("class Component:" in vp.script.value):
@@ -349,6 +388,21 @@ class VBuild:
         else:
             
             return transScript(js)
+    @property
+    def script_setup(self):
+        """ Return JS (js of embbeded components), after transScript"""
+        js = "\n".join(self._script_setup)
+        isPyComp = "_pyfunc_op_instantiate(" in js  # in fact : contains
+        isLibInside = "var _pyfunc_op_instantiate" in js
+        import pscript
+
+        if (fullPyComp is False) and isPyComp and not isLibInside:
+            import pscript
+            return transScript(pscript.get_full_std_lib() + "\n" + js)
+        else:
+            
+            return transScript(js)
+
 
     @property
     def style(self):
@@ -368,6 +422,7 @@ class VBuild:
         if same:
             raise VBuildException("You can't have multiple '%s'" % list(same)[0])
         self._html.extend(o._html)
+        self._script_setup.extend(o._script_setup)
         self._script.extend(o._script)
         self._styles.extend(o._styles)
         self.tags.extend(o.tags)
@@ -384,10 +439,13 @@ class VBuild:
 
     def __repr__(self):
         """ return an html ready represenation of the component(s) """
+        aa = self.script_setup
         hh = self.html
         jj = self.script
         ss = self.style
         s = ""
+        if aa:
+            s += "<script setup>\n%s\n</script>\n" % aa
         if ss:
             s += "<style>\n%s\n</style>\n" % ss
         if hh:
@@ -406,6 +464,7 @@ def mkClassicVueComponent(name, template, code):
         if 0 <= p1 <= p2:
             js = code[p1 : p2 + 1]
         else:
+    
             raise Exception("Can't find valid content inside '{' and '}'")
 
     return """var %s = Vue.component('%s', %s);""" % (
@@ -413,6 +472,21 @@ def mkClassicVueComponent(name, template, code):
         name,
         js.replace("{", "{template:'%s'," % template, 1),
     )
+
+def mkClassicVueComponent2(name, template, code):
+    if code is None:
+        js = ""
+        return js
+    else:
+        import pscript
+        code = pscript.py2js(
+            code, inline_stdlib=False,filename=None
+        )  # https://pscript.readthedocs.io/en/latest/api.html
+        code="\n".join(code.split("\n")[:-1])
+      
+
+        return code
+
 class JsModule:
     def __init__(self,name):
         self.__name__=name
@@ -436,9 +510,14 @@ def require(path):
     
     
     match=re.search(r"(?P<variable>\w+)\s*?=\s*?require\(\""+path.replace(".",r"\."),content)
+    """
+    if path.startswith("http"):
+        match=
+    """
     #variable=re.search(r"(?P<variable>\w+)\s+?=\s+?require\(\""+path,globals()["__code__"]).groups()[0]
     
     if match:
+
         globals()[match.groups()[0]]=JsModule(match.groups()[0])    
     
 
@@ -525,9 +604,10 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 _package+="/__init__"
 
             code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
-    
-
+  
     exec(code, globals(), locals())
+
+    
     klass = locals()["C"]
 
     computeds = []
@@ -607,12 +687,12 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     pyjs = pscript.py2js(
         code, inline_stdlib=genStdLibMethods,filename=__file_component__
     )  # https://pscript.readthedocs.io/en/latest/api.html
-    if "Home" in __file_component__:
-        with open(__file_component__+".txt","w") as f:
-            f.write("#########"+str(pyjs))
-    
 
-    
+    pyjs=re.sub(r"require\(\"(?P<package>http[\w|\@|\/|\.|:|-]+)\"\)",r"import '\g<package>'",pyjs)
+    pyjs=re.sub(r"require\(\'(?P<package>http[\w|\@|\/|\.|:|-]+)\'\)",r"import '\g<package>'",pyjs)
+
+
+
     
     
     return (
@@ -663,26 +743,32 @@ def render(*filenames):
     files = list(itertools.chain(*files))
 
     ll = []
+    l2=[]
     for f in files:
         try:
             with open(f, "r+") as fid:
                 content = fid.read()
         except IOError as e:
             raise VBuildException(str(e))
-        ll.append(VBuild(f, content))
-
-    return sum(ll)
+        if 'lang="python"' in content or "lang='python'" in content:
+            ll.append(VBuild(f, content))
+       
+    if ll:
+        return sum(ll)
 
 def build(path="src/"):
+    
     d=render(path)
+    if path.endswith("Hero.vue"):
+        with open(path+".txt","w") as f:
+            f.write(str(d))
     print(d)
+    
 
 def src_py2js(path):
     import pscript
     with open(path) as f:
         compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path)
-        
-        
 
         print(compiled)
 
