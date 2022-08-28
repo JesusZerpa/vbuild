@@ -262,7 +262,7 @@ class VBuild:
                 filename: which will be used to name the component, and create the namespace for the template
                 content: the string buffer which contains the sfc/vue component
         """
-    
+        self._script_setup=[]
         if not filename:
             raise VBuildException("Component %s should be named" % filename)
 
@@ -317,20 +317,20 @@ class VBuild:
             else:
                 ######################################################### js
                 try:
-                    if vp.script_setup.type=="python":
+                    if vp.script_setup and vp.script_setup.type=="python":
                         self._script_setup = [
                             mkClassicVueComponent2(
                                 name, "#" + tplId, vp.script_setup and vp.script_setup.value
                             )
                         ]
-                    else:
+                    elif vp.script_setup:
                         self._script_setup = [
                             vp.script_setup.value
                         ]
 
                 except Exception as e:
                     with open("NODE.txt","w") as f:
-                        f.write(str(vp.script_setup.value))
+                        f.write(str(e))
                     print("qqqqqqqq ",e)
                     raise VBuildException(
                         "JS Component %s contains a bad script" % filename
@@ -391,7 +391,10 @@ class VBuild:
     @property
     def script_setup(self):
         """ Return JS (js of embbeded components), after transScript"""
-        js = "\n".join(self._script_setup)
+        if self._script_setup:
+            js = "\n".join(self._script_setup)
+        else:
+            js=""
         isPyComp = "_pyfunc_op_instantiate(" in js  # in fact : contains
         isLibInside = "var _pyfunc_op_instantiate" in js
         import pscript
@@ -604,6 +607,8 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 _package+="/__init__"
 
             code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
+    with open("TEST.txt","w") as f:
+        f.write(code)
   
     exec(code, globals(), locals())
 
@@ -757,12 +762,14 @@ def render(*filenames):
         return sum(ll)
 
 def build(path="src/"):
+    try:
+        d=render(path)
+        print(d)
+    except:
+        with open(path+".error","w") as f:
+            with open(path) as f2:
+                f.write(f2.read())
     
-    d=render(path)
-    if path.endswith("Hero.vue"):
-        with open(path+".txt","w") as f:
-            f.write(str(d))
-    print(d)
     
 
 def src_py2js(path):
