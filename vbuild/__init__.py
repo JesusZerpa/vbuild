@@ -682,8 +682,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 components=obj
             if oname=="props":
                 props=obj
-
-
+    print("//-------------------")
     methods = "\n".join(methods)
     computeds = "\n".join(computeds)
     watchs = "\n".join(watchs)
@@ -757,18 +756,30 @@ def render(*filenames):
             raise VBuildException(str(e))
         if 'lang="python"' in content or "lang='python'" in content:
             ll.append(VBuild(f, content))
+        else:
+            l2.append(content)
        
     if ll:
         return sum(ll)
+    else:
+        return "\n".join(l2)
 
 def build(path="src/"):
     try:
         d=render(path)
         print(d)
-    except:
+        
+    except Exception as e:
+        import traceback
+        from io import  StringIO
+        s=StringIO()
+        traceback.print_exc(file=s)
+        s.seek(0)
+        msg=s.read()
+ 
         with open(path+".error","w") as f:
             with open(path) as f2:
-                f.write(f2.read())
+                f.write(str(msg)+"\n"+f2.read())
     
     
 
