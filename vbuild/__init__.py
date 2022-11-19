@@ -607,8 +607,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 _package+="/__init__"
 
             code=re.sub(rf"(require\(\'{match['package']}\.py\'\))",rf"require('{_package}.py')",code)
-    with open("TEST.txt","w") as f:
-        f.write(code)
+
   
     exec(code, globals(), locals())
 
@@ -622,15 +621,35 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     lifecycles = []
     classname = klass.__name__
     props = []
-    
+    emits = []
+    computeds2={}
     for oname, obj in vars(klass).items():
         if callable(obj):
             
             if not oname.startswith("_"):
+         
                 if oname.startswith("COMPUTED_"):
-                    computeds.append(
-                        "%s: %s.prototype.%s," % (oname[9:], classname, oname)
-                    )
+                    if oname.startswith("COMPUTED_GET_"):
+                        name=oname[len("COMPUTED_GET_"):]
+                        if name not in computeds2:
+                            computeds2[name]={
+                                "get": "%s.prototype.%s" % (classname, oname)
+                            }
+                        else:
+                            computeds2[name]["get"]="%s.prototype.%s" % (classname, oname)
+                    elif oname.startswith("COMPUTED_SET_"):
+                        name=oname[len("COMPUTED_SET_"):]
+                        if name not in computeds2:
+                            computeds2[name]={
+                                "set": "%s.prototype.%s" % (classname, oname)
+                            }
+                        else:
+                            computeds2[name]["set"]="%s.prototype.%s" % (classname, oname)
+
+                    else:
+                        computeds.append(
+                            "%s: %s.prototype.%s," % (oname[9:], classname, oname)
+                        )
                 elif oname.startswith("WATCH_"):
                     if obj.__defaults__:
                         varwatch = obj.__defaults__[
@@ -682,6 +701,18 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                 components=obj
             if oname=="props":
                 props=obj
+            if oname=="emits":
+                emits=obj
+    sub=""
+    for elem in computeds2:
+        sub=elem+":{"
+        for method in computeds2[elem]:
+            if method=="get":
+                sub+=method+"(){ return "+computeds2[elem][method]+".bind(this)()},"
+            else:
+                sub+=method+"(value){"+computeds2[elem][method]+".bind(this)(value)},"
+        sub+="},"
+        computeds.append(sub)
     print("//-------------------")
     methods = "\n".join(methods)
     computeds = "\n".join(computeds)
@@ -714,6 +745,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     export default{
         name: "%(name)s",
         props: %(props)s,
+        emits: %(emits)s,
         components: %(components)s,
         computed: {
             %(computeds)s
@@ -768,7 +800,10 @@ def build(path="src/"):
     try:
         d=render(path)
         print(d)
-        
+        if path.endswith("Menu.vue"):
+            with open(path+".test","w") as f:
+                f.write(str(d))
+
     except Exception as e:
         import traceback
         from io import  StringIO
