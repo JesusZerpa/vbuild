@@ -257,12 +257,13 @@ class VBuild:
         .tags  : list of component's name whose are in the vbuild instance
     """
 
-    def __init__(self, filename, content):
+    def __init__(self, filename, content,dir_project=None):
         """ Create a VBuild class, by providing a :
                 filename: which will be used to name the component, and create the namespace for the template
                 content: the string buffer which contains the sfc/vue component
         """
         self._script_setup=[]
+        self.dir_project=dir_project
         if not filename:
             raise VBuildException("Component %s should be named" % filename)
 
@@ -764,10 +765,12 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     )
 
 
-def render(*filenames):
+def render(*filenames,**kwargs):
     """ Helpers to render VBuild's instances by providing filenames or pattern (glob's style)"""
     isPattern = lambda f: ("*" in f) or ("?" in f)
-
+    dir_project=None
+    if "dir_project" in kwargs:
+        dir_project=kwargs["dir_project"]
     files = []
     for i in filenames:
         if isinstance(i, list):
@@ -787,7 +790,7 @@ def render(*filenames):
         except IOError as e:
             raise VBuildException(str(e))
         if 'lang="python"' in content or "lang='python'" in content:
-            ll.append(VBuild(f, content))
+            ll.append(VBuild(f, content,dir_project))
         else:
             l2.append(content)
        
@@ -796,9 +799,9 @@ def render(*filenames):
     else:
         return "\n".join(l2)
 
-def build(path="src/"):
+def build(path="src/",dir_project=None):
     try:
-        d=render(path)
+        d=render(path,dir_project=dir_project)
         print(d)
         if path.endswith("Menu.vue"):
             with open(path+".test","w") as f:
@@ -818,10 +821,10 @@ def build(path="src/"):
     
     
 
-def src_py2js(path):
+def src_py2js(path,dir_project):
     import pscript
     with open(path) as f:
-        compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path)
+        compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path,dir_project=dir_project)
 
         print(compiled)
 
