@@ -729,7 +729,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     lifecycles = "\n".join(lifecycles)
 
     pyjs = pscript.py2js(
-        code, inline_stdlib=genStdLibMethods,filename=__file_component__,dir_project=self.dir_project
+        code, inline_stdlib=genStdLibMethods,filename=__file_component__,dir_project=dir_project
     )  # https://pscript.readthedocs.io/en/latest/api.html
 
     pyjs=re.sub(r"require\(\"(?P<package>http[\w|\@|\/|\.|:|-]+)\"\)",r"import '\g<package>'",pyjs)
