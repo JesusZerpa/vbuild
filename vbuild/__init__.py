@@ -266,7 +266,7 @@ class VBuild:
         self.dir_project=dir_project
         if not filename:
             raise VBuildException("Component %s should be named" % filename)
-
+        
         if type(content) != type(filename):  # only py2, transform
             if type(content) == unicode:  # filename to the same type
                 filename = filename.decode("utf8")  # of content to avoid
@@ -307,7 +307,7 @@ class VBuild:
                 try:
                     self._script_setup = [
                         mkPythonVueComponent2(
-                            name, "#" + tplId, vp.script_setup.value, filename,fullPyComp
+                            name, "#" + tplId, vp.script_setup.value, filename,fullPyComp,dir_project=self.dir_project
                         )
                     ]
                 except Exception as e:
@@ -321,14 +321,15 @@ class VBuild:
                     if vp.script_setup and vp.script_setup.type=="python":
                         self._script_setup = [
                             mkClassicVueComponent2(
-                                name, "#" + tplId, vp.script_setup and vp.script_setup.value
+                                name, "#" + tplId, vp.script_setup and vp.script_setup.value,dir_project=self.dir_project
                             )
                         ]
                     elif vp.script_setup:
                         self._script_setup = [
                             vp.script_setup.value
                         ]
-
+                    with open("ERROR8.txt","a") as f:
+                        f.write(str(self.dir_project)+"\n")
                 except Exception as e:
                     with open("NODE.txt","w") as f:
                         f.write(str(e))
@@ -343,7 +344,7 @@ class VBuild:
                 try:
                     self._script = [
                         mkPythonVueComponent(
-                            name, "#" + tplId, vp.script.value, filename,fullPyComp
+                            name, "#" + tplId, vp.script.value, filename,fullPyComp,dir_project=self.dir_project
                         )
                     ]
                 except Exception as e:
@@ -477,14 +478,14 @@ def mkClassicVueComponent(name, template, code):
         js.replace("{", "{template:'%s'," % template, 1),
     )
 
-def mkClassicVueComponent2(name, template, code):
+def mkClassicVueComponent2(name, template, code,dir_project=None):
     if code is None:
         js = ""
         return js
     else:
         import pscript
         code = pscript.py2js(
-            code, inline_stdlib=False,filename=None
+            code, inline_stdlib=False,filename=None,dir_project=dir_project
         )  # https://pscript.readthedocs.io/en/latest/api.html
         code="\n".join(code.split("\n")[:-1])
       
@@ -532,7 +533,7 @@ def require(path):
 def alert(alerta):
     pass
 
-def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMethods=True):
+def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMethods=True,dir_project=None):
     """ Transpile the component 'name', which have the template 'template',
         and the code 'code' (which should contains a valid Component class)
         to a valid Vue.component js statement.
@@ -652,6 +653,12 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                             "%s: %s.prototype.%s," % (oname[9:], classname, oname)
                         )
                 elif oname.startswith("WATCH_"):
+
+                    watchs.append(
+
+                        '"%s": %s.prototype.%s,' % (oname[len("WATCH_"):], classname, oname)
+                        )
+                    """
                     if obj.__defaults__:
                         varwatch = obj.__defaults__[
                             0
@@ -663,6 +670,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
                         raise VBuildException(
                             "name='var_to_watch' is not specified in %s" % oname
                         )
+                    """
                 elif oname in [
                     "BEFOREROUTEUPDATE",
                     "BEFOREMOUNT",
@@ -721,7 +729,7 @@ def mkPythonVueComponent(name, template, code, __file_component__,genStdLibMetho
     lifecycles = "\n".join(lifecycles)
 
     pyjs = pscript.py2js(
-        code, inline_stdlib=genStdLibMethods,filename=__file_component__
+        code, inline_stdlib=genStdLibMethods,filename=__file_component__,dir_project=self.dir_project
     )  # https://pscript.readthedocs.io/en/latest/api.html
 
     pyjs=re.sub(r"require\(\"(?P<package>http[\w|\@|\/|\.|:|-]+)\"\)",r"import '\g<package>'",pyjs)
@@ -772,6 +780,7 @@ def render(*filenames,**kwargs):
     if "dir_project" in kwargs:
         dir_project=kwargs["dir_project"]
     files = []
+    
     for i in filenames:
         if isinstance(i, list):
             files.extend(i)
@@ -780,7 +789,7 @@ def render(*filenames,**kwargs):
 
     files = [glob.glob(i) if isPattern(i) else [i] for i in files]
     files = list(itertools.chain(*files))
-
+    
     ll = []
     l2=[]
     for f in files:
@@ -793,7 +802,7 @@ def render(*filenames,**kwargs):
             ll.append(VBuild(f, content,dir_project))
         else:
             l2.append(content)
-       
+    
     if ll:
         return sum(ll)
     else:
@@ -801,12 +810,10 @@ def render(*filenames,**kwargs):
 
 def build(path="src/",dir_project=None):
     try:
+
         d=render(path,dir_project=dir_project)
         print(d)
-        if path.endswith("Menu.vue"):
-            with open(path+".test","w") as f:
-                f.write(str(d))
-
+     
     except Exception as e:
         import traceback
         from io import  StringIO
@@ -824,6 +831,7 @@ def build(path="src/",dir_project=None):
 def src_py2js(path,dir_project):
     import pscript
     with open(path) as f:
+        
         compiled=pscript.py2js(f.read(),inline_stdlib=True,filename=path,dir_project=dir_project)
 
         print(compiled)
