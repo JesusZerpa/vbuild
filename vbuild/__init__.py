@@ -328,12 +328,9 @@ class VBuild:
                         self._script_setup = [
                             vp.script_setup.value
                         ]
-                    with open("ERROR8.txt","a") as f:
-                        f.write(str(self.dir_project)+"\n")
+                    
                 except Exception as e:
-                    with open("NODE.txt","w") as f:
-                        f.write(str(e))
-                    print("qqqqqqqq ",e)
+                    
                     raise VBuildException(
                         "JS Component %s contains a bad script" % filename
                     )
